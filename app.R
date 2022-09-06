@@ -1,3 +1,5 @@
+# 2022/8/21 tosa
+# 
 " データ分析ツール"
 library(shiny)
 library(shinythemes)
@@ -6,7 +8,24 @@ library(shinycssloaders)
 library(foreign)
 library(shinyjs)
 
+# 選択リストなどの最大個数を変更する
 options(shiny.maxRequestSize = 1 * 1024 ^ 3)
+# 数値の表示桁の最大値を定める
+options(digits=10)
+
+
+my_round <- function(x, d=0){
+  p = 10^d
+  if (x >0 ){
+    s = 1
+  }else if(x < 0){
+    s = 0
+  }else{
+    s = -1
+  }
+  return (floor((x * p) + s * 0.5)/p)
+}
+
 
 
 ### uiを定義
@@ -70,7 +89,7 @@ analyticsTabPanel <- function(id) {
                       "analytics_button"
                     )), ),
              column(6,
-                    h2("3. 演算結果", align="center"),
+                    h2("3. 結果", align="center"),
                     br(),
                     br(),
                     br(),
@@ -114,11 +133,23 @@ ui <- shinyUI(fluidPage(
               .shiny-notification {
                 opacity: 1;
               }
+              input#analytics-selected_variable-selectized {
+                 width: 10em !important;
+              }
+              .selectize-dropdown [data-selectable] .highlight {
+                 background: rgba(255, 237, 40, 0);
+              }
+      .shiny-table.spacing-s>thead>tr>th {
+        text-align: center !important;
+      }
+      .shiny-table.spacing-s>tbody>tr>td:nth-of-type(1) {
+        text-align: left !important;
+      }
               "
     )
   )),
   navbarPage(
-    strong(em("JGSS オンラインデータ分析ツール")),br(),
+    strong(em("JGSS オンライン分析アプリケーション")),br(),
     id = "navbar",
     # グローバル空間
     # namespace: global
@@ -139,7 +170,7 @@ ui <- shinyUI(fluidPage(
     # namespace: metadata
     # metadataTabPanel(id = "metadata"),
 
-    # Footer
+    # FooterupdateSelectizeInput
     footer= h5(hr(),"Copyright(C) 1999-2022, Japanese General Social Surveys. All Rights Reserved.", align = "center")
     
   )
@@ -162,7 +193,8 @@ filereader <- function(id) {
                      input$file_SPSS$datapath,
                      reencode = "UTF-8",
                      to.data.frame = T,
-                     use.value.labels = T
+                     use.value.labels = T,
+                     add.undeclared.levels = "no"
                    )
                    colNames <- names(df)
                    variableLabels <-
@@ -203,7 +235,7 @@ filereader <- function(id) {
                  
                  output$spssSummaryTitle <- renderText({
                    req(dfSpss())
-                   paste("読込んだ変数一覧（合計", length(names(dfSpss())), "種類）")
+                   paste("読込んだ変数一覧（合計", format(length(names(dfSpss())), big.mark=",", scientific=F), "種類）")
                  })
                  
                  output$spssSummaryLink <- renderUI({
@@ -214,10 +246,10 @@ filereader <- function(id) {
                  output$spssSumarry <- renderTable({
                    data.frame(
                      "変数" = names(dfSpss()),
-                     "回答数" = sapply(dfSpss(), function(x)
-                       sum(!is.na(x))),
-                     "欠損数" = sapply(dfSpss(), function(x)
-                       sum(is.na(x)))
+                     "回答数" = format(sapply(dfSpss(), function(x)
+                       sum(!is.na(x))), big.mark=",", scientific=F),
+                     "欠損数" = format(sapply(dfSpss(), function(x)
+                       sum(is.na(x))), big.mark=",", scientific=F)
                    )
                  }, rownames = FALSE, colnames = TRUE)
                  
@@ -261,9 +293,11 @@ selectorGenerator <- function(id, dfSpss) {
   moduleServer(id,
                function(input, output, session) {
                  # 変数を選択するためのプルダウン項目制御
+                 # ここらへんで項目数をとる
                  observe({
-                   updateSelectInput(session,
+                   updateSelectizeInput(session,
                                      "selected_variable",
+                                     options=list(maxOptions = 2000),
                                      choices = names(dfSpss()))
                  })
                })
@@ -505,8 +539,8 @@ analyticsButtonGenerator <- function(id, df) {
                      if (!is.factor(x)) {
                        # 非ラベル型
                        tagList(
-                         p(strong("■ 変数の概観")),
-                         p("ヒストグラムのbin数を指定"),
+                         p(strong("■ 変数の分布")),
+                         p("ヒストグラムの階級数（bin数）を指定"),
                          p(
                            sliderInput(
                              ns("slider_input_data"),
@@ -518,6 +552,9 @@ analyticsButtonGenerator <- function(id, df) {
                          ),
                          p(actionButton(
                            ns("trigger_histogram"), "ヒストグラムを出力", width = "180px"), align = "center"),
+                         hr(),
+                         p(actionButton(
+                           ns("trigger_summary"), "度数分布表を出力", width = "180px"), align = "center"),
                          hr(),
                          p(strong("■ 変数の代表値")),
                          p(actionButton(ns(
@@ -549,7 +586,7 @@ analyticsButtonGenerator <- function(id, df) {
                        tagList(
                          p(strong("■ 変数の概観")),
                          p(actionButton(
-                           ns("trigger_summary"), "カテゴリー値別に出力", width = "180px"), align = "center"),
+                           ns("trigger_summary"), "度数分布表を出力", width = "180px"), align = "center"),
                          hr(),
                          p(strong("■ 変数の代表値")),
                          p(actionButton(ns(
@@ -620,10 +657,7 @@ summaryGenerator <- function(id, df, dfValue) {
                          }))
                        Frequency <-
                          as.numeric(table(x, useNA = "no"))
-                       Proportioin <-
-                         paste(round(as.numeric(prop.table(
-                           Frequency
-                         )), 3) * 100, "%")
+                       Proportioin <- round(as.numeric(prop.table(Frequency)), 3) * 100
                        data <-
                          data.frame(Values, Categories, Frequency, Proportioin)
                        
@@ -631,12 +665,63 @@ summaryGenerator <- function(id, df, dfValue) {
                        data <-
                          data[which(Categories %in% checked),]
                        
-                       # ソート
+                       # ソート　 累積度数計算 2022/08/21 tosa cumsumを使った累積計算
                        data[order(data$Values),]
+                       data$Accumulation <- 0
+                       data$AccumulationP <- 0
+                       
+                       cumfreq <- cumsum(Frequency)
+                       cumpercent <- cumsum(Frequency)/length(x)*100.0
+                       
+                       data$Frequency <- paste(format(round(data$Frequency), big.mark=",", scientific=F))
+                       data$Accumulation<- paste(format(round(cumfreq), big.mark=",", scientific=F))
+                       data$Proportioin <- paste(round(data$Proportioin,1),"%")
+                       data$AccumulationP <- paste(round(cumpercent,1),"%")
+                       #
+                       data <- data[, colnames(data) != "Values"]
+                       print(data)
+                       # 合計行を足す 2022/08/21
+                       totalAcc <- data$Accumulation[length(data$Accumulation)]
+                       totalAccP <- data$AccumulationP[length(data$Accumulation)]
+                       tempDf <- data.frame(Categories="合計",Frequency=totalAcc,Proportioin=totalAccP,Accumulation="",AccumulationP="")
+                       data <- rbind(data,tempDf)
+                       colnames(data) <- c("カテゴリー","度数","パーセント","累積度数","累積パーセント")
+                       data
                      } else {
                        "連続値データです。"
+                       # 集計テーブル作成
+                       x <- factor(x)
+                       Categories <- levels(x)
+                       Values <- Categories
+                       Frequency <-
+                         as.numeric(table(x, useNA = "no"))
+                       Proportioin <- round(as.numeric(prop.table(Frequency)), 3) * 100
+                       data <-
+                         data.frame(Values, Categories, Frequency, Proportioin)
+
+                       # ソート　 累積度数計算 2022/08/21 tosa cumsumを使った累積計算
+                       data[order(data$Values),]
+                       data$Accumulation <- 0
+                       data$AccumulationP <- 0
+                       
+                       cumfreq <- cumsum(Frequency)
+                       cumpercent <- cumsum(Frequency)/length(x)*100.0
+                       
+                       data$Frequency <- paste(format(round(data$Frequency), big.mark=",", scientific=F))
+                       data$Accumulation<- paste(format(round(cumfreq), big.mark=",", scientific=F))
+                       data$Proportioin <- paste(round(data$Proportioin,1),"%")
+                       data$AccumulationP <- paste(round(cumpercent,1),"%")
+                       #
+                       data <- data[, colnames(data) != "Values"]
+                       # 合計行を足す 2022/08/21
+                       totalAcc <- data$Accumulation[length(data$Accumulation)]
+                       totalAccP <- data$AccumulationP[length(data$Accumulation)]
+                       tempDf <- data.frame(Categories="合計",Frequency=totalAcc,Proportioin=totalAccP,Accumulation="",AccumulationP="")
+                       data <- rbind(data,tempDf)
+                       colnames(data) <- c("カテゴリー","度数","パーセント","累積度数","累積パーセント")
+                       data
                      }
-                   })
+                   },align = "r")
                  })
                })
 }
@@ -682,13 +767,18 @@ averageGenerator <- function(id, df, dfValue) {
                        
                        # 順序の平均を四捨五入し、一番近いラベル番号の要素を出力
                        if (length(x) > 0) {
-                         stat <- round(mean(as.integer(x)))
+                         # 都道府県、就労などの集計方法は仕様確認後に修正する予定
+                         m <- mean(as.integer(x))
+                         # stat <- my_round(m)
+                         stat <- round(m)
                          stat <-
-                           which(abs(as.numeric(xLabels) - stat) == min(abs(as.numeric(
+                            which(abs(as.numeric(xLabels) - stat) == min(abs(as.numeric(
                              xLabels
                            ) -
                              stat)))
                          paste(xLabels[stat], "：", names(xLabels)[stat])
+                         # paste(format(m, digit = 3), "(", stat, "：", names(xLabels)[which(xLabels == stat)], ")")
+                         paste(format(m, digit = 3))
                        } else{
                          paste("NA")
                        }
@@ -755,7 +845,8 @@ medianGenerator <- function(id, df, dfValue) {
                        # 順序の中央値の要素を出力
                        if (length(x) > 0) {
                          stat <- median(as.integer(x))
-                         paste(stat, "：", names(xLabels)[which(xLabels == stat)])
+                         # 中央値の表示方法を修正(8/13)
+                         paste(stat, "(", stat, "：", names(xLabels)[which(xLabels == stat)], ")")
                        } else{
                          paste("NA")
                        }
@@ -1298,7 +1389,7 @@ histgramGenerator <- function(id, df, dfValue) {
                        } else{
                          bins <- seq(min(x), max(x), length.out = bin_number + 1)
                        }
-                       hist(
+                       h <- hist(
                          x,
                          breaks = bins,
                          col = 'darkgray',
@@ -1306,6 +1397,21 @@ histgramGenerator <- function(id, df, dfValue) {
                          main = column,
                          xlab = NA,
                          ylab = "Frequency"
+                       )
+                       # 2022/8/21 tosa
+                       keta <- as.integer(log10(max(h$counts)))
+                       memori <- 10^keta
+                       y = round(max(h$counts)) + memori
+                       hist(
+                         x,
+                         breaks = bins,
+                         col = 'darkgray',
+                         border = 'white',
+                         main = column,
+                         xlab = NA,
+                         ylab = "Frequency",
+                         label = T,
+                         ylim = c(0,y)
                        )
                      }
                    }, height = 600, width = 400)
