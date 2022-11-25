@@ -1,4 +1,5 @@
 # 2022/8/21 tosa
+# このコードはapp_tosa20220813nakayama20220906.Rを添削したものです
 # 
 " データ分析ツール"
 library(shiny)
@@ -641,9 +642,15 @@ summaryGenerator <- function(id, df, dfValue) {
                      } else if (is.factor(x)) {
                        # チェックボックス値を取得
                        checked <- input$checkGroup
+                       # チェックなしならば処理をしない 2022/09/10
+                       if (length(checked) == 0) {
+                         return()
+                       }
                        
                        # データを絞り込み
                        x <- x[which(x %in% checked)]
+                       # 前のfactor情報が残るので再factorする 2022/09/10
+                       x <- factor(x)
                        
                        # 集計テーブル作成
                        Categories <- levels(x)
@@ -661,9 +668,9 @@ summaryGenerator <- function(id, df, dfValue) {
                        data <-
                          data.frame(Values, Categories, Frequency, Proportioin)
                        
-                       # 表示行を絞り込み
-                       data <-
-                         data[which(Categories %in% checked),]
+                       # 表示行を絞り込み 2022/09/10 前で絞り込んでいるのでここでこの処理は不要
+                       #data <-
+                      #  data[which(Categories %in% checked),]
                        
                        # ソート　 累積度数計算 2022/08/21 tosa cumsumを使った累積計算
                        data[order(data$Values),]
