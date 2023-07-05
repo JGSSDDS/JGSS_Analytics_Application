@@ -1,103 +1,96 @@
-
-#### global定義
-
-## ライブラリー設定
+# 2022/8/21 tosa
+# このコードはapp_tosa20220813nakayama20220906.Rを添削したものです
+# 
+" データ分析ツール"
 library(shiny)
-library(shinyjs)
 library(shinythemes)
-library(shinycssloaders)
-library(shinydashboard)
-library(foreign)
 library(DT)
-library(caret)
-library(randomForest)
-library(nnet)
-library(MASS)
-library(kernlab)
-library(car)
-library(psych)
-library(haven)
-data(spam)
+library(shinycssloaders)
+library(foreign)
+library(shinyjs)
 
-## データの取扱い最大個数の変更
-options(shiny.maxRequestSize = 1 * 1024 ^ 4)
-
-## 数値データの最大表示桁数の変更
+# 選択リストなどの最大個数を変更する
+options(shiny.maxRequestSize = 1 * 1024 ^ 3)
+# 数値の表示桁の最大値を定める
 options(digits=10)
 
 
-#### ui定義
+my_round <- function(x, d=0){
+  p = 10^d
+  if (x >0 ){
+    s = 1
+  }else if(x < 0){
+    s = 0
+  }else{
+    s = -1
+  }
+  return (floor((x * p) + s * 0.5)/p)
+}
 
-## 「データセットの読込み」タブ
+
+
+### uiを定義
+
+## 「データの読込み」タブのUIモジュール
+" UI Module for fileread."
 
 filereadTabPanel <- function(id) {
   ns <- NS(id)
   
-  tabPanel("データセットの読込み", 
-           fluidRow(
-             column(
-               3,
-               fileInput(ns("file_SPSS"), "SPSSファイルを読込む",
-                         accept = "application/x-spss-sav")
-             ), 
-             column(
-               9,
-               # 読み込みファイル名の表示
-               textOutput(ns("spssFileName")),
-               # 読み込みデータのサマリー可視化
-               h4(textOutput(ns(
-                 "spssSummaryTitle"
-               )),
-               htmlOutput(ns(
-                 "spssSummaryLink"
-               ), align="right")
-               ),
-               withSpinner(tableOutput(ns("spssSummary"
-               ))
-               )
-             )
-           ))
+  tabPanel("① データセットの読込み", sidebarLayout(
+    sidebarPanel(
+      fileInput(ns("file_SPSS"), "SPSSファイルを読込む",
+                accept = "application/x-spss-sav")
+    ),
+    mainPanel(
+      # navbarの移動はglobalスコープ
+      # h3(actionLink("link_to_analytics", "このデータセットを分析")),
+      # textOutput("notification"),
+      
+      # 読み込みデータのサマリー可視化
+      h4(textOutput(ns(
+        "spssSummaryTitle"
+      )),
+      htmlOutput(ns(
+        "spssSummaryLink"
+      ), align="right")
+      ),
+      withSpinner(tableOutput(ns("spssSumarry"))),
+    )
+  ))
 }
 
-
-## 「変数の分布と代表値」タブ
+## 「② 分布と代表値」タブのUIモジュール
+" UI Module for analytics of variables."
 
 analyticsTabPanel <- function(id) {
   ns <- NS(id)
   
-  tabPanel("変数の分布と代表値",
+  tabPanel("② 分布と代表値",
            fluidRow(
              column(
                3,
-               tags$style(type="text/css", ".column-background {background-color: #f5f5f5;}"), # 新しい背景色
-               div(class = "column-background",
-                   br(),
-                   h2("変数選択", align="center"),
-                   p(hr(),"読込んだデータセット：",textOutput(ns("spssName")),hr()),
-                   selectInput(ns("selected_variable"),
-                               "分析対象の変数を選択",
-                               choices = NULL),
-                   p(textOutput(ns("typeOfVariable")),hr()),
-                   p(id = "CheckBox_variable",
-                     uiOutput(ns("checkGroupUi"))),
-                   p(id = "slider_filter_ui_wrapper",
-                     uiOutput(ns("slider_filter_ui")))
-               )
+               h2("1. 変数の選択", align="center"),
+               p(hr(),"読込んだデータセット：",textOutput(ns("spssName")),hr()),
+               selectInput(ns("selected_variable"),
+                           "分析対象の変数を選択",
+                           choices = NULL),
+               p(textOutput(ns("typeOfVariable")),hr()),
+               p(id = "CheckBox_variable",
+                 uiOutput(ns("checkGroupUi"))),
+               p(id = "slider_filter_ui_wrapper",
+                 uiOutput(ns(
+                   "slider_filter_ui"
+                 )))
              ),
-             column(
-               3,
-               tags$style(type="text/css", "#analytics_column {background-color: #f5f5f5;}"),
-               div(id = "analytics_column",
-                   br(),
-                   h2("分析実行", align="center"),
-                   hr(),
-                   uiOutput(ns("analytics_button")),br(),
-               )
-             ),
-
+             column(3,
+                    h2("2. 分析の選択", align="center"),
+                    hr(),
+                    uiOutput(ns(
+                      "analytics_button"
+                    )), ),
              column(6,
-                    br(),
-                    h2("結果", align="center"),
+                    h2("3. 結果", align="center"),
                     br(),
                     br(),
                     br(),
@@ -109,175 +102,24 @@ analyticsTabPanel <- function(id) {
            ))
 }
 
+## 「ご利用ガイド」タブのUIモジュール
+## " UI Module for guide."
 
-## 「二変量分析」タブ
-
-bivariateTabPanel <- function(id) {
-  ns <- NS(id)
+ guideTabPanel <- function(id) {
+ ns <- NS(id)
   
-  tabPanel("二変量分析・二重クロス表",
-           fluidRow(
-             column(
-               3,
-               tags$style(type="text/css", ".column-background {background-color: #f5f5f5;}"), 
-               div(class = "column-background",
-                   br(),
-                   h2("変数選択と分析実行", align="center"),
-                   p(hr(),"読込んだデータセット：",textOutput(ns("spssName")),hr()),
-                   selectInput(ns("selected_variable"),
-                               "分析対象の変数（x）を選択",
-                               choices = NULL),
-                   p(textOutput(ns("typeOfVariable")),hr()),
-                   br(),
-                   br(),
-                   selectInput(ns("selected_variable2"),
-                               "分析対象の変数（y）を選択",
-                               choices = NULL),
-                   p(textOutput(ns("typeOfVariable2")),hr()),
-                   br(),
-                   br(),
-                   p(strong("以上の変数（x, y）にて分析を実行する")),
-                   uiOutput(ns("bivariate_button")),
-                   br()
-               )
-             ),
-             column(9,
-                    br(),
-                    h2("結果", align="center"),
-                    br(),
-                    br(),
-                    br(),
-                    br(),
-                    br(),
-                    div(h4(withSpinner(uiOutput(ns("stats")))), align = "center")
-             )))
+ tabPanel("ご利用ガイド",
+          h1("3/28のお打ち合わせ後、3/29に作成予定"))
 }
 
+## 「JDCatメタデータカタログ」タブのUIモジュール
+" UI Module for metadata catalog."
 
-## 「三重クロス表」タブ
-
-triple_crossTabPanel <- function(id) {
+metadataTabPanel <- function(id) {
   ns <- NS(id)
   
-  tabPanel("三重クロス表",
-           fluidRow(
-             column(
-               3,
-               tags$style(type="text/css", ".column-background {background-color: #f5f5f5;}"), 
-               div(class = "column-background",
-                   br(),
-                   h2("変数選択と分析実行", align="center"),
-                   p(hr(),"読込んだデータセット：",textOutput(ns("spssName")),hr()),
-                   selectInput(ns("selected_variable"),
-                               "分析対象の変数（x）を選択",
-                               choices = NULL),
-                   p(textOutput(ns("typeOfVariable")),hr()),
-                   br(),
-                   br(),
-                   selectInput(ns("selected_variable2"),
-                               "分析対象の変数（y）を選択",
-                               choices = NULL),
-                   p(textOutput(ns("typeOfVariable2")),hr()),
-                   br(),
-                   br(),
-                   selectInput(ns("selected_variable3"),
-                               "分析対象の変数（z）を選択",
-                               choices = NULL),
-                   p(textOutput(ns("typeOfVariable3")),hr()),
-                   br(),
-                   br(),
-                   p(strong("以上の変数（x, y, z）にて分析を実行する")),
-                   uiOutput(ns("triple_cross_button")),
-                   br()
-               )
-             ),
-             column(9,
-                    br(),
-                    h2("結果", align="center"),
-                    br(),
-                    br(),
-                    br(),
-                    br(),
-                    br(),
-                    div(h4(withSpinner(uiOutput(ns("stats")))), align = "center")
-             )))
-}
-
-
-## 「多変量分析」タブ
-
-multivariateTabPanel <- function(id) {
-  ns <- NS(id)
-  
-  tabPanel(
-    "多変量分析",
-    fluidRow(
-      column(
-        3,
-        tags$style(type="text/css", ".column-background {background-color: #f5f5f5;}"), 
-        div(class = "column-background",
-            br(),
-            h2("変数選択と分析実行", align = "center"),
-            p(hr(), "読込んだデータセット：", textOutput(ns("spssName")), hr()),
-            
-            selectInput(
-              ns("data_for_regressionX"),
-              label = "データセットを選択してください。",
-              choices = c(
-                "アヤメのデータ" = "iris",
-                "不妊症の比較データ" = "infert",
-                "ボストン近郊の不動産価格データ" = "Boston",
-                "スパムと正常メールのデータ" = "spam",
-                "ニューヨークの大気状態データ" = "airquality",
-                "タイタニックの乗客データ" = "titanic",
-                "取込みデータ.sav" = "spss"
-              ),
-              selected = "spss"
-            ),
-            selectInput(
-              ns("data_for_regressionY"),
-              label = "目的変数を選択",
-              choices = NULL
-            ),
-            h4("選択された説明変数はこちら"),
-            verbatimTextOutput(ns("rows_selected")),
-            selectInput(
-              ns("regression_type"),
-              label = "分析の手法を選択",
-              choices = c(
-                "重回帰分析(一般線形モデル)" = "lm",
-                "ランダムフォレスト" = "rf",
-                "3層ニューラルネット" = "nnet",
-                "ロジスティック回帰分析" = "logistic",
-                "二元配置分散分析" = "manova",
-                "主成分分析" = "pca",
-                "因子分析" = "fa",
-                "偏相関係数（説明変数3以上）" = "partial_corr"
-              )
-            ),
-            actionButton(ns("regression_button"), "実行")
-        )
-      ),
-      column(
-        9,
-        br(),
-        h2("結果", align = "center"),
-        tabsetPanel(
-          type = "tabs",
-          tabPanel(
-            "Table",
-            h4("説明変数を選択してください。"),
-            DT::dataTableOutput(ns("data_table_for_regression"))
-          ),
-          tabPanel("分析結果", verbatimTextOutput(ns("summary_regression"))),
-          tabPanel(
-            "プロット",
-            plotOutput(ns("plot_regression"))
-          )
-        )
-      )
-    )
-  )
+  tabPanel("JDCat メタデータカタログ",
+           h1("3/29にhttps://jgss.daishodai.ac.jp/jgssdds/jgssdds_jdcat.html反映予定"))
 }
 
 
@@ -307,28 +149,30 @@ ui <- shinyUI(fluidPage(
               "
     )
   )),
-  
   navbarPage(
     strong(em("JGSS オンライン分析アプリケーション")),br(),
     id = "navbar",
-
-    # データセットの読込み
+    # グローバル空間
+    # namespace: global
+    
+    # ① データセットの読込み
+    # namespace: fileread
     filereadTabPanel(id = "fileread"),
     
-    # 変数の分布と代表値
+    # ② 分布と代表値
+    # namespace: analytics
     analyticsTabPanel(id = "analytics"),
     
-    # 二変量分析
-    bivariateTabPanel(id = "bivariate"),
-
-    # 三重クロス表
-    triple_crossTabPanel(id = "triple_cross"),
-        
-    # 多変量分析
-    multivariateTabPanel(id = "multivariate"),
+    # ご利用ガイド
+    # namespace: guide
+    # guideTabPanel(id = "guide"),
+    
+    # JDCat メタデータカタログ
+    # namespace: metadata
+    # metadataTabPanel(id = "metadata"),
 
     # FooterupdateSelectizeInput
-    footer= h5(hr(),"Copyright(C) 1999-2023, Japanese General Social Surveys. All Rights Reserved.", align = "center")
+    footer= h5(hr(),"Copyright(C) 1999-2022, Japanese General Social Surveys. All Rights Reserved.", align = "center")
     
   )
 ))
@@ -336,6 +180,7 @@ ui <- shinyUI(fluidPage(
 ### serverを定義
 
 ## 「データの読込み」タブのサーバーモジュール
+" Module for fileread functions."
 
 filereader <- function(id) {
   " File reader returning dataframe list of spss and numeric version of spss."
@@ -396,10 +241,10 @@ filereader <- function(id) {
                  
                  output$spssSummaryLink <- renderUI({
                    req(dfSpss())
-                   actionLink("link_to_analytics", "▶ このデータセットを分析する")
+                   actionLink("link_to_analytics", "このデータセットを分析する")
                  })
                  
-                 output$spssSummary <- renderTable({
+                 output$spssSumarry <- renderTable({
                    data.frame(
                      "変数" = names(dfSpss()),
                      "回答数" = format(sapply(dfSpss(), function(x)
@@ -431,9 +276,11 @@ filereader <- function(id) {
                })
 }
 
-## 「変数の分布と代表値」タブのサーバーモジュール
+## 「② 分布と代表値」タブのサーバーモジュール
+" Module for analytics functions."
 
 fileNameGenerator <- function(id, spssName) {
+  " Generator of file name text."
   moduleServer(id,
                function(input, output, session) {
                  observe({
@@ -443,13 +290,15 @@ fileNameGenerator <- function(id, spssName) {
 }
 
 selectorGenerator <- function(id, dfSpss) {
+  " Generator of selector options."
   moduleServer(id,
                function(input, output, session) {
                  # 変数を選択するためのプルダウン項目制御
+                 # ここらへんで項目数をとる
                  observe({
                    updateSelectizeInput(session,
                                      "selected_variable",
-                                     options=list(maxOptions = 10000),
+                                     options=list(maxOptions = 2000),
                                      choices = names(dfSpss()))
                  })
                })
@@ -481,6 +330,7 @@ typeOfVariableGenerator <- function(id, df) {
 }
 
 checkboxGenerator <- function(id, df, dfValue) {
+  " Generator of checkbox based on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # チェックボックス生成
@@ -646,6 +496,7 @@ checkboxGenerator <- function(id, df, dfValue) {
 }
 
 sliderGenerator <- function(id, df) {
+  " Generator of checkbox based on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # スライダ生成
@@ -670,6 +521,7 @@ sliderGenerator <- function(id, df) {
 }
 
 analyticsButtonGenerator <- function(id, df) {
+  " Generator of blank space on selector change."
   moduleServer(id,
                function(input, output, session) {
                  # selectorの変更に応じた記述統計ボタンの変更
@@ -686,7 +538,7 @@ analyticsButtonGenerator <- function(id, df) {
                      
                      # データの型に応じて計算
                      if (!is.factor(x)) {
-                       # 非カテゴリー型
+                       # 非ラベル型
                        tagList(
                          p(strong("■ 変数の分布")),
                          p("ヒストグラムの階級数（bin数）を指定"),
@@ -731,7 +583,7 @@ analyticsButtonGenerator <- function(id, df) {
                          ), "標準誤差", width = "180px"), align = "center"),
                        )
                      } else {
-                       # カテゴリー型
+                       # ラベル型
                        tagList(
                          p(strong("■ 変数の概観")),
                          p(actionButton(
@@ -768,8 +620,8 @@ analyticsButtonGenerator <- function(id, df) {
                })
 }
 
-
 summaryGenerator <- function(id, df, dfValue) {
+  " Generator of summary table on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた概観テーブル生成
@@ -794,6 +646,7 @@ summaryGenerator <- function(id, df, dfValue) {
                        if (length(checked) == 0) {
                          return()
                        }
+                       
                        # データを絞り込み
                        x <- x[which(x %in% checked)]
                        # 前のfactor情報が残るので再factorする 2022/09/10
@@ -817,7 +670,7 @@ summaryGenerator <- function(id, df, dfValue) {
                        
                        # 表示行を絞り込み 2022/09/10 前で絞り込んでいるのでここでこの処理は不要
                        #data <-
-                       #  data[which(Categories %in% checked),]
+                      #  data[which(Categories %in% checked),]
                        
                        # ソート　 累積度数計算 2022/08/21 tosa cumsumを使った累積計算
                        data[order(data$Values),]
@@ -844,17 +697,6 @@ summaryGenerator <- function(id, df, dfValue) {
                      } else {
                        "連続値データです。"
                        # 集計テーブル作成
-                       # スライダー値を取得 2023/03/21
-                       if (length(input$slider_filter) == 2) {
-                         minLim <- input$slider_filter[1]
-                         maxLim <- input$slider_filter[2]
-                       } else{
-                         minLim <- input$slider_filter[1]
-                         maxLim <- minLim
-                       }
-                       # データを絞り込み
-                       x <- x[which(x >= minLim)]
-                       x <- x[which(x <= maxLim)]
                        x <- factor(x)
                        Categories <- levels(x)
                        Values <- Categories
@@ -863,7 +705,7 @@ summaryGenerator <- function(id, df, dfValue) {
                        Proportioin <- round(as.numeric(prop.table(Frequency)), 3) * 100
                        data <-
                          data.frame(Values, Categories, Frequency, Proportioin)
-                       
+
                        # ソート　 累積度数計算 2022/08/21 tosa cumsumを使った累積計算
                        data[order(data$Values),]
                        data$Accumulation <- 0
@@ -891,8 +733,8 @@ summaryGenerator <- function(id, df, dfValue) {
                })
 }
 
-
 averageGenerator <- function(id, df, dfValue) {
+  " Generator of average value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた平均値生成
@@ -969,6 +811,7 @@ averageGenerator <- function(id, df, dfValue) {
 }
 
 medianGenerator <- function(id, df, dfValue) {
+  " Generator of median value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた中央値生成
@@ -1035,6 +878,7 @@ medianGenerator <- function(id, df, dfValue) {
 }
 
 maxGenerator <- function(id, df, dfValue) {
+  " Generator of max value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた最大値生成
@@ -1101,6 +945,7 @@ maxGenerator <- function(id, df, dfValue) {
 }
 
 minGenerator <- function(id, df, dfValue) {
+  " Generator of min value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた最小値生成
@@ -1167,7 +1012,8 @@ minGenerator <- function(id, df, dfValue) {
 }
 
 unbiasedVarGenerator <- function(id, df, dfValue) {
-   moduleServer(id,
+  " Generator of unbiased var value text on selector input."
+  moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた分散生成
                  observe({
@@ -1228,6 +1074,7 @@ unbiasedVarGenerator <- function(id, df, dfValue) {
 }
 
 sampleVarGenerator <- function(id, df, dfValue) {
+  " Generator of sample var value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた分散生成
@@ -1289,6 +1136,7 @@ sampleVarGenerator <- function(id, df, dfValue) {
 }
 
 unbiasedStdGenerator <- function(id, df, dfValue) {
+  " Generator of unbiased std value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた標準偏差生成
@@ -1350,6 +1198,7 @@ unbiasedStdGenerator <- function(id, df, dfValue) {
 }
 
 sampleStdGenerator <- function(id, df, dfValue) {
+  " Generator of sample std value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた標準偏差生成
@@ -1415,6 +1264,7 @@ sampleStdGenerator <- function(id, df, dfValue) {
 }
 
 steGenerator <- function(id, df, dfValue) {
+  " Generator of ste value text on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じた標準誤差生成
@@ -1476,6 +1326,7 @@ steGenerator <- function(id, df, dfValue) {
 }
 
 histgramGenerator <- function(id, df, dfValue) {
+  " Generator of histgram based on selector input."
   moduleServer(id,
                function(input, output, session) {
                  # action buttonに応じたヒストグラム生成
@@ -1575,587 +1426,8 @@ histgramGenerator <- function(id, df, dfValue) {
                })
 }
 
-selectorGenerator2 <- function(id, dfSpss) {
-  moduleServer(id,
-               function(input, output, session) {
-                 # 変数を選択するためのプルダウン項目制御
-                 # ここらへんで項目数をとる
-                 observe({
-                   updateSelectizeInput(session,
-                                        "selected_variable2",
-                                        options=list(maxOptions = 10000),
-                                        choices = names(dfSpss()))
-                 })
-               })
-}
-
-typeOfVariableGenerator2 <- function(id, df) {
-  moduleServer(id,
-               function(input, output, session) {
-                 observe({
-                   # データ列名を取得
-                   column <- input$selected_variable2
-                   
-                   # データフレームに変数が含まれるか確認
-                   req(column %in% names(df()))
-                   
-                   # 変数の型の種類のテキストを生成
-                   output$typeOfVariable2 <- renderText({
-                     x <- df()[, column]
-                     if (is.factor(x)) {
-                       "データ型：カテゴリー値"
-                     } else{
-                       choiceList = list()
-                       "データ型：数値"
-                     }
-                   })
-                 })
-               })
-}
-
-bivariateButtonGenerator <- function(id, df) {
-  moduleServer(id,
-               function(input, output, session) {
-                 # selectorの変更に応じた記述統計ボタンの変更
-                 observe({
-                   req(nrow(df()) > 0)
-                   
-                   output$bivariate_button <- renderUI({
-                     # 名前空間を定義
-                     ns = NS(id)
-                     
-                     # 計算に必要なデータを取得
-                     column <- input$selected_variable2
-                     y <- df()[, column]
-                     
-                     # データの型に応じて計算
-                     if (!is.factor(y)) {
-                       # 非ラベル型
-                       tagList(
-                         p(actionButton(ns(
-                           "trigger_scatter"
-                         ), "散布図 / 相関係数", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_t_test_result"
-                         ), "t検定", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_anova_result"
-                         ), "F検定", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_simple_regression_result"
-                         ), "単回帰分析", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_double_cross_table_result"
-                         ), "二重クロス表", width = "180px"), align = "center"),
-                       )
-                     } else {
-                       # ラベル型
-                       tagList(
-                         p(actionButton(ns(
-                           "trigger_scatter"
-                         ), "散布図 / 相関係数", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_t_test_result"
-                         ), "t検定", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_anova_result"
-                         ), "F検定", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_simple_regression_result"
-                         ), "単回帰分析", width = "180px"), align = "center"),
-                         p(actionButton(ns(
-                           "trigger_double_cross_table_result"
-                         ), "二重クロス表", width = "180px"), align = "center"),
-                       )
-                     }
-                   })
-                 })
-               })
-}
-
-
-scatterGenerator <- function(id, df, dfValue) {
-  moduleServer(id,
-               function(input, output, session) {
-                 # action buttonに応じた散布図生成
-                 observe({
-                   req(input$trigger_scatter)
-                   req(nrow(df()) > 0)
-                   
-                   data <- reactive({
-                     # 計算に必要なデータを取得
-                     x_column <- isolate(input$selected_variable)
-                     # 対象がfactorの場合xの値を数値にする
-                     if (is.factor(df()[, x_column])) {
-                       x <- as.numeric(df()[, x_column])
-                     }else{
-                       x <- df()[, x_column]
-                     }
-                     y_column <- isolate(input$selected_variable2)
-                     # 対象がfactorの場合xの値を数値にする
-                     if (is.factor(df()[, y_column])) {
-                       y <- as.numeric(df()[, y_column])
-                     }else{
-                       y <- df()[, y_column]
-                     }
-                     
-                     # データを結合して返す
-                     data.frame(x, y)
-                   })
-                   
-                   output$scatter <- renderPlot({
-                     # isolate()を使用して不必要な再計算を防止
-                     plot(x = data()[, 1], y = data()[, 2], 
-                          xlab = input$selected_variable, ylab = input$selected_variable2,
-                          main = paste("Scatterplot of", input$selected_variable, "vs.", input$selected_variable2))
-                     # 相関係数を計算
-                     correlation <- cor(data()[, 1], data()[, 2], use="complete.obs", method="pearson")
-                     # 相関係数をプロットに追加
-                     legend("bottomright", legend = paste("相関係数:", round(correlation, 2)), bty = "n", cex = 3)
-                   })
-                   
-                   res <- nearPoints(dfValue(), input$plot_click, xvar = input$selected_variable,
-                                     yvar = input$selected_variable2,
-                                     threshold = 5, maxpoints = 10)
-                   if (nrow(res) == 0) {
-                     return()
-                   }
-                   res
-                 })
-               })
-}
-
-t_testGenerator <- function(id, df, dfValue) {
-  moduleServer(id,
-               function(input, output, session) {
-                 observe({
-                   req(input$trigger_t_test_result)
-                   req(nrow(df()) > 0)
-                   
-                   data <- reactive({
-                     # 計算に必要なデータを取得
-                     x_column <- isolate(input$selected_variable)
-                     if (is.factor(df()[, x_column])) {
-                       x <- as.numeric(df()[, x_column])
-                     } else {
-                       x <- df()[, x_column]
-                     }
-                     y_column <- isolate(input$selected_variable2)
-                     if (is.factor(df()[, y_column])) {
-                       y <- as.numeric(df()[, y_column])
-                     } else {
-                       y <- df()[, y_column]
-                     }
-                     
-                     # データを結合して返す
-                     data.frame(x, y)
-                   })
-                   
-                   # t検定を実行し、結果を表示
-                   output$t_test_result <- renderPrint({
-                     t_test <- t.test(data()[, 1], data()[, 2])
-                     t_test
-                   })
-                 })
-               })
-}
-
-f_testGenerator <- function(id, df, dfValue) {
-  moduleServer(id,
-               function(input, output, session) {
-                 observe({
-                   req(input$trigger_anova_result)
-                   req(nrow(df()) > 0)
-                   
-                   data <- reactive({
-                     # 計算に必要なデータを取得
-                     x_column <- isolate(input$selected_variable)
-                     x <- as.factor(df()[, x_column])
-                     
-                     y_column <- isolate(input$selected_variable2)
-                     if (is.factor(df()[, y_column])) {
-                       y <- as.numeric(df()[, y_column])
-                     } else {
-                       y <- df()[, y_column]
-                     }
-                     
-                     # データを結合して返す
-                     data.frame(x, y)
-                   })
-                   
-                   # ANOVAを実行し、結果を表示
-                   output$anova_result <- renderPrint({
-                     anova_test <- aov(data()[, 2] ~ data()[, 1])
-                     summary(anova_test)
-                   })
-                 })
-               })
-}
-
-simple_regressionGenerator <- function(id, df, dfValue) {
-  moduleServer(id,
-               function(input, output, session) {
-                 observe({
-                   req(input$trigger_simple_regression_result)
-                   req(nrow(df()) > 0)
-                   
-                   data <- reactive({
-                     # 計算に必要なデータを取得
-                     x_column <- isolate(input$selected_variable)
-                     if (is.factor(df()[, x_column])) {
-                       x <- as.numeric(df()[, x_column])
-                     } else {
-                       x <- df()[, x_column]
-                     }
-                     y_column <- isolate(input$selected_variable2)
-                     if (is.factor(df()[, y_column])) {
-                       y <- as.numeric(df()[, y_column])
-                     } else {
-                       y <- df()[, y_column]
-                     }
-                     
-                     # データを結合して返す
-                     data.frame(x, y)
-                   })
-                   
-                   # 単回帰分析を実行し、結果を表示
-                   output$simple_regression_result <- renderPrint({
-                     simple_regression_model <- lm(data()[, 2] ~ data()[, 1])
-                     summary(simple_regression_model)
-                   })
-                 })
-               })
-}
-
-
-double_cross_tableGenerator <- function(id, df, dfValue) {
-  moduleServer(id,
-               function(input, output, session) {
-                 observe({
-                   req(input$trigger_double_cross_table_result)
-                   req(nrow(df()) > 0)
-                   
-                   data <- reactive({
-                     # 計算に必要なデータを取得
-                     x_column <- isolate(input$selected_variable)
-                     if (is.factor(df()[, x_column])) {
-                       x <- as.numeric(df()[, x_column])
-                     } else {
-                       x <- df()[, x_column]
-                     }
-                     y_column <- isolate(input$selected_variable2)
-                     if (is.factor(df()[, y_column])) {
-                       y <- as.numeric(df()[, y_column])
-                     } else {
-                       y <- df()[, y_column]
-                     }
-                     
-                     # データを結合して返す
-                     data.frame(x, y)
-                   })
-                   
-                   # 二重クロス表を生成し、結果を表示
-                   output$double_cross_table_result <- renderTable({
-                     double_cross_table <- table(data()[, 1], data()[, 2])
-                     double_cross_table
-                   })
-                 })
-               })
-}
-
-selectorGenerator3 <- function(id, dfSpss) {
-  moduleServer(id,
-               function(input, output, session) {
-                 # 変数を選択するためのプルダウン項目制御
-                 # ここらへんで項目数をとる
-                 observe({
-                   updateSelectizeInput(session,
-                                        "selected_variable3",
-                                        options=list(maxOptions = 10000),
-                                        choices = names(dfSpss()))
-                 })
-               })
-}
-
-typeOfVariableGenerator3 <- function(id, df) {
-  moduleServer(id,
-               function(input, output, session) {
-                 observe({
-                   # データ列名を取得
-                   column <- input$selected_variable3
-                   
-                   # データフレームに変数が含まれるか確認
-                   req(column %in% names(df()))
-                   
-                   # 変数の型の種類のテキストを生成
-                   output$typeOfVariable3 <- renderText({
-                     x <- df()[, column]
-                     if (is.factor(x)) {
-                       "データ型：カテゴリー値"
-                     } else{
-                       choiceList = list()
-                       "データ型：数値"
-                     }
-                   })
-                 })
-               })
-}
-
-triple_crossButtonGenerator <- function(id, df) {
-  moduleServer(id,
-               function(input, output, session) {
-                 # selectorの変更に応じた記述統計ボタンの変更
-                 observe({
-                   req(nrow(df()) > 0)
-                   
-                   output$triple_cross_button <- renderUI({
-                     # 名前空間を定義
-                     ns = NS(id)
-                     
-                     # 計算に必要なデータを取得
-                     column <- input$selected_variable3
-                     z <- df()[, column]
-                     
-                     # データの型に応じて計算
-                     if (!is.factor(z)) {
-                       # 非ラベル型
-                       tagList(
-                         p(actionButton(ns(
-                           "trigger_triple_cross_table_result"
-                         ), "三重クロス表", width = "180px"), align = "center"))
-                     } else {
-                       # ラベル型
-                       tagList(
-                         p(actionButton(ns(
-                           "trigger_triple_cross_table_result"
-                         ), "三重クロス表", width = "180px"), align = "center"))
-                     }
-                   })
-                 })
-               })
-}
-
-triple_cross_tableGenerator <- function(id, df, dfValue) {
-  moduleServer(id,
-               function(input, output, session) {
-                 observe({
-                   req(input$trigger_triple_cross_table_result) # ここを修正
-                   req(nrow(df()) > 0)
-                   
-                   data <- reactive({
-                     # 計算に必要なデータを取得
-                     x_column <- isolate(input$selected_variable)
-                     if (is.factor(df()[, x_column])) {
-                       x <- as.numeric(df()[, x_column])
-                     } else {
-                       x <- df()[, x_column]
-                     }
-                     y_column <- isolate(input$selected_variable2)
-                     if (is.factor(df()[, y_column])) {
-                       y <- as.numeric(df()[, y_column])
-                     } else {
-                       y <- df()[, y_column]
-                     }
-                     z_column <- isolate(input$selected_variable3)
-                     if (is.factor(df()[, z_column])) {
-                       z <- as.numeric(df()[, z_column])
-                     } else {
-                       z <- df()[, z_column]
-                     }
-                     
-                     # データを結合して返す
-                     data.frame(x, y, z)
-                   })
-                   
-                   # 三重クロス表を生成し、結果を表示
-                   output$triple_cross_table_result <- renderTable({ # ここを修正
-                     triple_cross_table <- table(data()[, 1], data()[, 2], data()[, 3])
-                     triple_cross_table
-                   })
-                 })
-               })
-}
-
-
-multivariateGenerator <- function(id, dfSpss, dfSpssName) {
-  moduleServer(id, function(input, output, session) {
-    ns <- session$ns
-    
-    data_for_regression <- reactive({
-      data <- switch(input$data_for_regressionX,
-                     "iris" = iris,
-                     "infert" = infert,
-                     "Boston" = Boston,
-                     "spam" = spam,
-                     "airquality" = airquality,
-                     "titanic" = data.frame(lapply(data.frame(Titanic), 
-                                                   function(i){rep(i, data.frame(Titanic)[, 5])})),
-                     "spss" = dfSpss()
-      )
-      updateSelectInput(session, "data_for_regressionY", choices = colnames(data), 
-                        selected = colnames(data)[1])
-      
-      return(data)
-    })
-    
-    output$debug_data_for_regression <- renderPrint({
-      cat("data_for_regression():\n")
-      print(data_for_regression())
-    })
-    
-    output$data_table_for_regression <- DT::renderDataTable(
-      t(data_for_regression()[1:10, ]), selection = list(target = 'row')
-    )
-    
-    output$rows_selected <- renderPrint(
-      input$data_table_for_regression_rows_selected
-    )
-    
-    data_train_and_test <- reactiveValues()
-    
-    regression_summary <- reactive({
-      input$regression_button
-      
-      y <- data_for_regression()[, isolate(input$data_for_regressionY)]
-      x <- data_for_regression()[, isolate(input$data_table_for_regression_rows_selected)]
-      
-      tmp_data <- data.frame(na.omit(x), na.omit(y))
-      colnames(tmp_data) <- c(colnames(x), "dependent_variable")
-      
-      # Remove rows with NA values
-      tmp_data <- na.omit(tmp_data)
-      
-      if (length(colnames(x)) < 2 && input$regression_type != "pca" && input$regression_type != "fa" && input$regression_type != "partial_corr") {
-        return("この分析では2つ以上の説明変数を選択する必要があります。")
-      }
-      
-      if (input$regression_type == "logistic") {
-        formula <- as.formula(paste(isolate(input$data_for_regressionY), "~ ."))
-        train_index <- createDataPartition(tmp_data$dependent_variable, p = .7,
-                                           list = FALSE,
-                                           times = 1)
-        data_train_and_test$train <- tmp_data[train_index, ]
-        data_train_and_test$test <- tmp_data[-train_index, ]
-        glm_result <- glm(formula, data = data_train_and_test$train, family = binomial)
-        return(glm_result)
-      } else if (input$regression_type == "manova") {
-        response_vars <- tmp_data[, -ncol(tmp_data)]
-        response_matrix <- as.matrix(response_vars)
-        manova_result <- manova(response_matrix ~ 1, data = tmp_data)
-        return(manova_result)
-      } else if (input$regression_type == "pca") {
-        pca_result <- prcomp(tmp_data[, -ncol(tmp_data)], center = TRUE, scale. = TRUE)
-        return(pca_result)
-      } else if (input$regression_type == "fa") {
-        library(psych)
-        fa_result <- fa(tmp_data[, -ncol(tmp_data)], nfactors = 3, rotate = "varimax")
-        return(fa_result)
-      } else if (input$regression_type == "partial_corr") {
-        if (length(colnames(x)) < 3) {
-          return("この分析では3つ以上の説明変数を選択する必要があります。")
-        }
-        library(ppcor)
-        tmp_data <- cbind(x, y)
-        partial_corr_result <- pcor(tmp_data)$estimate
-        return(partial_corr_result)
-      } else {
-        formula <- as.formula(paste("dependent_variable ~", paste(colnames(x), collapse = " + ")))
-        
-        train_index <- createDataPartition(tmp_data$dependent_variable, p = .7,
-                                           list = FALSE,
-                                           times = 1)
-        data_train_and_test$train <- tmp_data[train_index, ]
-        data_train_and_test$test <- tmp_data[-train_index, ]
-        
-        train_result <- train(formula,
-                              data = data_train_and_test$train,
-                              method = isolate(input$regression_type),
-                              tuneLength = 4,
-                              preProcess = c('center', 'scale'),
-                              trControl = trainControl(method = "cv"),
-                              linout = TRUE)
-        return(train_result)
-      }
-    })
-    
-    output$summary_regression <- renderPrint({
-      summary_text <- regression_summary()
-      if (is.character(summary_text)) {
-        cat(summary_text)
-      } else if (input$regression_type == "logistic") {
-        cat("Coefficients:\n")
-        print(summary_text$coefficients)
-        cat("\n\nConfusion matrix:\n")
-        print(table(predict(regression_summary(), data_train_and_test$test), 
-                    data_train_and_test$test$dependent_variable))
-      } else if (input$regression_type == "manova") {
-        cat("MANOVA summary:\n")
-        print(summary(summary_text))
-      } else if (input$regression_type == "pca") {
-        cat("PCA summary:\n")
-        print(summary(summary_text))
-      } else if (input$regression_type == "fa") {
-        cat("Factor analysis summary:\n")
-        print(summary_text)
-      } else if (input$regression_type == "partial_corr") {
-        cat("Partial correlation coefficients:\n")
-        print(summary_text)
-      } else {
-        predict_result_residual <- predict(regression_summary(), data_train_and_test$test) - 
-          data_train_and_test$test$"dependent_variable"
-        cat("MSE（平均二乗誤差）")
-        print(sqrt(sum(predict_result_residual ^ 2) / nrow(data_train_and_test$test)))
-        summary(regression_summary())
-      }
-    })
-    
-    output$debug_regression_summary <- renderPrint({
-      cat("regression_summary():\n")
-      print(regression_summary())
-    })
-    
-    output$plot_regression <- renderPlot({
-      plot_text <- regression_summary()
-      if (is.character(plot_text)) {
-        cat(plot_text)
-        plot.new()
-        title(main = plot_text, line = 2)
-        return()
-      } else if (input$regression_type == "pca") {
-        screeplot(plot_text, type = "lines")
-      } else if (input$regression_type == "fa") {
-        library(GPArotation)
-        fa.diagram(plot_text)
-      } else {
-        predicted <- predict(regression_summary(), data_train_and_test$test)
-        observed <- data_train_and_test$test$"dependent_variable"
-        
-        # Remove infinite or NaN values
-        valid_indices <- which(is.finite(predicted) & is.finite(observed))
-        predicted <- predicted[valid_indices]
-        observed <- observed[valid_indices]
-        
-        if (length(predicted) == 0 || length(observed) == 0) {
-          plot.new()
-          title(main = "Error: Predicted or observed values are empty", line = 2)
-          return()
-        }
-        
-        if (length(predicted) != length(observed)) {
-          plot.new()
-          title(main = "Error: Lengths of predicted and observed values do not match", line = 2)
-          return()
-        }
-        plot(predicted, observed, xlab="prediction", ylab="real")
-        abline(a=0, b=1, col="red", lwd=2)
-      }
-    })
-  })
-}
-        
-        
-
 statsSelector <- function(id) {
+  " Select a type of stats to visualize."
   moduleServer(id,
                function(input, output, session) {
                  ns <- NS(id)
@@ -2233,42 +1505,6 @@ statsSelector <- function(id) {
                    satatsType("histgram")
                  })
                  
-                 # 散布図ボタンを押下
-                 observe({
-                   req(input$trigger_scatter)
-                   satatsType("scatter")
-                 })
-                 
-                 # t検定ボタンを押下
-                 observe({
-                   req(input$trigger_t_test_result)
-                   satatsType("t_test_result")
-                 })
-
-                 # F検定ボタンを押下
-                 observe({
-                   req(input$trigger_anova_result)
-                   satatsType("anova_result")
-                 })
-                 
-                 # 単回帰分析ボタンを押下
-                 observe({
-                   req(input$trigger_simple_regression_result)
-                   satatsType("simple_regression_result")
-                 })
-                 
-                 # 二重クロス表ボタンを押下
-                 observe({
-                   req(input$trigger_double_cross_table_result)
-                   satatsType("double_cross_table_result")
-                 })
-                 
-                 # 三重クロス表ボタンを押下
-                 observe({
-                   req(input$trigger_triple_cross_table_result)
-                   satatsType("triple_cross_table_result")
-                 })
-                 
                  # 押下した記述統計を出力
                  output$stats <- renderUI({
                    switch(
@@ -2284,17 +1520,18 @@ statsSelector <- function(id) {
                      'unbiased_std' = textOutput(ns('unbiased_std')),
                      'sample_std' = textOutput(ns('sample_std')),
                      'ste' = textOutput(ns('ste')),
-                     'histgram' = plotOutput(ns('histgram')),
-                     'scatter' = plotOutput(ns('scatter')),
-                     't_test_result' = verbatimTextOutput(ns('t_test_result')),
-                     'anova_result' = verbatimTextOutput(ns('anova_result')),
-                     'simple_regression_result' = verbatimTextOutput(ns('simple_regression_result')),
-                     'double_cross_table_result' = tableOutput(ns('double_cross_table_result')),
-                     'triple_cross_table_result' = tableOutput(ns('triple_cross_table_result')),
+                     'histgram' = plotOutput(ns('histgram'))
                    )
                  })
                })
 }
+
+## 「ご利用ガイド」タブのサーバーモジュール
+" Module for guide functions."
+
+## 「JDCatメタデータカタログ」タブのサーバーモジュール
+" Module for metadata functions."
+
 
 ## server全体の統合
 server <- shinyServer(function(input, output, session) {
@@ -2302,7 +1539,7 @@ server <- shinyServer(function(input, output, session) {
   
   # タブ移動
   observeEvent(input$link_to_analytics, {
-    showTab("navbar", target = "変数の分布と代表値", select = TRUE)
+    showTab("navbar", target = "② 分布と代表値", select = TRUE)
   })
   
   
@@ -2312,7 +1549,7 @@ server <- shinyServer(function(input, output, session) {
   dfList <- filereader(id = "fileread")
   
   
-  ## 「変数の分布と代表値」navbar
+  ## 「② 分布と代表値」navbar
   
   # ファイル名生成
   fileNameGenerator(id = "analytics",
@@ -2330,7 +1567,7 @@ server <- shinyServer(function(input, output, session) {
                     df = dfList$spss,
                     dfValue = dfList$spssValue)
   
-  # スライダー生成
+  # チェックボックス生成
   sliderGenerator(id = "analytics", df = dfList$spss)
   
   # アクションボタンを生成
@@ -2395,111 +1632,12 @@ server <- shinyServer(function(input, output, session) {
   statsSelector(id = "analytics")
   
   
-  ## 「二変量分析」navbar
+  ## 「ご利用ガイド」navbar
   
-  # ファイル名生成
-  fileNameGenerator(id = "bivariate",
-                    spssName = dfList$spssName)
   
-  # プルダウン生成
-  selectorGenerator(id = "bivariate",
-                    dfSpss = dfList$spss)
+  ## 「JDCatメタデータカタログ」navbar
 
-  # プルダウン2生成
-  selectorGenerator2(id = "bivariate",
-                    dfSpss = dfList$spss)
-  
-  # 変数の型のテキストを生成
-  typeOfVariableGenerator(id = "bivariate", df = dfList$spss)
-  
-  # 変数の型2のテキストを生成
-  typeOfVariableGenerator2(id = "bivariate", df = dfList$spss)
-  
-  # アクションボタンを生成
-  bivariateButtonGenerator(id = "bivariate", df = dfList$spss)
-
-  
-  # 散布図と相関係数生成
-  scatterGenerator(id = "bivariate",
-                    df = dfList$spss,
-                    dfValue = dfList$spssValue)
-
-  # t検定生成
-  t_testGenerator(id = "bivariate",
-                  df = dfList$spss,
-                  dfValue = dfList$spssValue)
-  
-  # F検定生成
-  f_testGenerator(id = "bivariate",
-                  df = dfList$spss,
-                  dfValue = dfList$spssValue)
-  
-  # 単回帰分析生成
-  simple_regressionGenerator(id = "bivariate",
-                             df = dfList$spss,
-                             dfValue = dfList$spssValue)
-
-  # 二重クロス表生成
-  double_cross_tableGenerator(id = "bivariate",
-                             df = dfList$spss,
-                             dfValue = dfList$spssValue)
-  
-  # 表示する記述統計を選択
-  statsSelector(id = "bivariate")
-
-  
-  ## 「三重クロス表分析」navbar  
-  
-  # ファイル名生成
-  fileNameGenerator(id = "triple_cross",
-                    spssName = dfList$spssName)
-  
-  # プルダウン生成
-  selectorGenerator(id = "triple_cross",
-                    dfSpss = dfList$spss)
-  
-  # プルダウン2生成
-  selectorGenerator2(id = "triple_cross",
-                     dfSpss = dfList$spss)
-  
-  # プルダウン3生成
-  selectorGenerator3(id = "triple_cross",
-                     dfSpss = dfList$spss)
-  
-  # 変数の型のテキストを生成
-  typeOfVariableGenerator(id = "triple_cross", df = dfList$spss)
-  
-  # 変数の型2のテキストを生成
-  typeOfVariableGenerator2(id = "triple_cross", df = dfList$spss)
-  
-  # 変数の型3のテキストを生成
-  typeOfVariableGenerator3(id = "triple_cross", df = dfList$spss)
-  
-  # アクションボタンを生成
-  triple_crossButtonGenerator(id = "triple_cross", df = dfList$spss)
-  
-  # 三重クロス表生成
-  triple_cross_tableGenerator(id = "triple_cross",
-                              df = dfList$spss,
-                              dfValue = dfList$spssValue)
-
-  # 表示する記述統計を選択
-  statsSelector(id = "triple_cross")
-    
-  ## 「多変量分析」navbar  
-  
-  # ファイル名生成
-  fileNameGenerator(id = "multivariate",
-                    spssName = dfList$spssName)
-  
-  # 回帰分析生成
-  multivariateGenerator(id = "multivariate", 
-                        dfSpss = dfList$spss, 
-                        dfSpssName = dfList$spssName)   
-  
 })
-      
-  
 
 
 ### アプリを実行
