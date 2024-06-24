@@ -1,6 +1,3 @@
-# 2022/8/21 tosa
-# このコードはapp_tosa20220813nakayama20220906.Rを添削したものです
-# 
 " データ分析ツール"
 library(shiny)
 library(shinythemes)
@@ -9,24 +6,7 @@ library(shinycssloaders)
 library(foreign)
 library(shinyjs)
 
-# 選択リストなどの最大個数を変更する
 options(shiny.maxRequestSize = 1 * 1024 ^ 3)
-# 数値の表示桁の最大値を定める
-options(digits=10)
-
-
-my_round <- function(x, d=0){
-  p = 10^d
-  if (x >0 ){
-    s = 1
-  }else if(x < 0){
-    s = 0
-  }else{
-    s = -1
-  }
-  return (floor((x * p) + s * 0.5)/p)
-}
-
 
 
 ### uiを定義
@@ -60,17 +40,17 @@ filereadTabPanel <- function(id) {
   ))
 }
 
-## 「② 分布と代表値」タブのUIモジュール
+## 「② 変数分析」タブのUIモジュール
 " UI Module for analytics of variables."
 
 analyticsTabPanel <- function(id) {
   ns <- NS(id)
   
-  tabPanel("② 分布と代表値",
+  tabPanel("② 変数分析",
            fluidRow(
              column(
                3,
-               h2("1. 変数の選択", align="center"),
+               h2("1. 変数選択", align="center"),
                p(hr(),"読込んだデータセット：",textOutput(ns("spssName")),hr()),
                selectInput(ns("selected_variable"),
                            "分析対象の変数を選択",
@@ -84,13 +64,13 @@ analyticsTabPanel <- function(id) {
                  )))
              ),
              column(3,
-                    h2("2. 分析の選択", align="center"),
+                    h2("2. 記述統計", align="center"),
                     hr(),
                     uiOutput(ns(
                       "analytics_button"
                     )), ),
              column(6,
-                    h2("3. 結果", align="center"),
+                    h2("3. 演算結果", align="center"),
                     br(),
                     br(),
                     br(),
@@ -103,13 +83,13 @@ analyticsTabPanel <- function(id) {
 }
 
 ## 「ご利用ガイド」タブのUIモジュール
-## " UI Module for guide."
+" UI Module for guide."
 
- guideTabPanel <- function(id) {
- ns <- NS(id)
+guideTabPanel <- function(id) {
+  ns <- NS(id)
   
- tabPanel("ご利用ガイド",
-          h1("3/28のお打ち合わせ後、3/29に作成予定"))
+  tabPanel("ご利用ガイド",
+           h1("3/28のお打ち合わせ後、3/29に作成予定"))
 }
 
 ## 「JDCatメタデータカタログ」タブのUIモジュール
@@ -134,23 +114,11 @@ ui <- shinyUI(fluidPage(
               .shiny-notification {
                 opacity: 1;
               }
-              input#analytics-selected_variable-selectized {
-                 width: 10em !important;
-              }
-              .selectize-dropdown [data-selectable] .highlight {
-                 background: rgba(255, 237, 40, 0);
-              }
-      .shiny-table.spacing-s>thead>tr>th {
-        text-align: center !important;
-      }
-      .shiny-table.spacing-s>tbody>tr>td:nth-of-type(1) {
-        text-align: left !important;
-      }
               "
     )
   )),
   navbarPage(
-    strong(em("JGSS オンライン分析アプリケーション")),br(),
+    strong(em("JGSS オンラインデータ分析ツール")),br(),
     id = "navbar",
     # グローバル空間
     # namespace: global
@@ -159,19 +127,19 @@ ui <- shinyUI(fluidPage(
     # namespace: fileread
     filereadTabPanel(id = "fileread"),
     
-    # ② 分布と代表値
+    # ② 変数分析
     # namespace: analytics
     analyticsTabPanel(id = "analytics"),
     
     # ご利用ガイド
     # namespace: guide
-    # guideTabPanel(id = "guide"),
+    guideTabPanel(id = "guide"),
     
     # JDCat メタデータカタログ
     # namespace: metadata
-    # metadataTabPanel(id = "metadata"),
+    metadataTabPanel(id = "metadata"),
 
-    # FooterupdateSelectizeInput
+    # Footer
     footer= h5(hr(),"Copyright(C) 1999-2022, Japanese General Social Surveys. All Rights Reserved.", align = "center")
     
   )
@@ -194,8 +162,7 @@ filereader <- function(id) {
                      input$file_SPSS$datapath,
                      reencode = "UTF-8",
                      to.data.frame = T,
-                     use.value.labels = T,
-                     add.undeclared.levels = "no"
+                     use.value.labels = T
                    )
                    colNames <- names(df)
                    variableLabels <-
@@ -236,7 +203,7 @@ filereader <- function(id) {
                  
                  output$spssSummaryTitle <- renderText({
                    req(dfSpss())
-                   paste("読込んだ変数一覧（合計", format(length(names(dfSpss())), big.mark=",", scientific=F), "種類）")
+                   paste("読込んだ変数一覧（合計", length(names(dfSpss())), "種類）")
                  })
                  
                  output$spssSummaryLink <- renderUI({
@@ -247,10 +214,10 @@ filereader <- function(id) {
                  output$spssSumarry <- renderTable({
                    data.frame(
                      "変数" = names(dfSpss()),
-                     "回答数" = format(sapply(dfSpss(), function(x)
-                       sum(!is.na(x))), big.mark=",", scientific=F),
-                     "欠損数" = format(sapply(dfSpss(), function(x)
-                       sum(is.na(x))), big.mark=",", scientific=F)
+                     "回答数" = sapply(dfSpss(), function(x)
+                       sum(!is.na(x))),
+                     "欠損数" = sapply(dfSpss(), function(x)
+                       sum(is.na(x)))
                    )
                  }, rownames = FALSE, colnames = TRUE)
                  
@@ -276,7 +243,7 @@ filereader <- function(id) {
                })
 }
 
-## 「② 分布と代表値」タブのサーバーモジュール
+## 「② 変数分析」タブのサーバーモジュール
 " Module for analytics functions."
 
 fileNameGenerator <- function(id, spssName) {
@@ -294,11 +261,9 @@ selectorGenerator <- function(id, dfSpss) {
   moduleServer(id,
                function(input, output, session) {
                  # 変数を選択するためのプルダウン項目制御
-                 # ここらへんで項目数をとる
                  observe({
-                   updateSelectizeInput(session,
+                   updateSelectInput(session,
                                      "selected_variable",
-                                     options=list(maxOptions = 2000),
                                      choices = names(dfSpss()))
                  })
                })
@@ -540,8 +505,8 @@ analyticsButtonGenerator <- function(id, df) {
                      if (!is.factor(x)) {
                        # 非ラベル型
                        tagList(
-                         p(strong("■ 変数の分布")),
-                         p("ヒストグラムの階級数（bin数）を指定"),
+                         p(strong("■ 変数の概観")),
+                         p("ヒストグラムのbin数を指定"),
                          p(
                            sliderInput(
                              ns("slider_input_data"),
@@ -553,9 +518,6 @@ analyticsButtonGenerator <- function(id, df) {
                          ),
                          p(actionButton(
                            ns("trigger_histogram"), "ヒストグラムを出力", width = "180px"), align = "center"),
-                         hr(),
-                         p(actionButton(
-                           ns("trigger_summary"), "度数分布表を出力", width = "180px"), align = "center"),
                          hr(),
                          p(strong("■ 変数の代表値")),
                          p(actionButton(ns(
@@ -587,7 +549,7 @@ analyticsButtonGenerator <- function(id, df) {
                        tagList(
                          p(strong("■ 変数の概観")),
                          p(actionButton(
-                           ns("trigger_summary"), "度数分布表を出力", width = "180px"), align = "center"),
+                           ns("trigger_summary"), "カテゴリー値別に出力", width = "180px"), align = "center"),
                          hr(),
                          p(strong("■ 変数の代表値")),
                          p(actionButton(ns(
@@ -642,15 +604,9 @@ summaryGenerator <- function(id, df, dfValue) {
                      } else if (is.factor(x)) {
                        # チェックボックス値を取得
                        checked <- input$checkGroup
-                       # チェックなしならば処理をしない 2022/09/10
-                       if (length(checked) == 0) {
-                         return()
-                       }
                        
                        # データを絞り込み
                        x <- x[which(x %in% checked)]
-                       # 前のfactor情報が残るので再factorする 2022/09/10
-                       x <- factor(x)
                        
                        # 集計テーブル作成
                        Categories <- levels(x)
@@ -664,71 +620,23 @@ summaryGenerator <- function(id, df, dfValue) {
                          }))
                        Frequency <-
                          as.numeric(table(x, useNA = "no"))
-                       Proportioin <- round(as.numeric(prop.table(Frequency)), 3) * 100
+                       Proportioin <-
+                         paste(round(as.numeric(prop.table(
+                           Frequency
+                         )), 3) * 100, "%")
                        data <-
                          data.frame(Values, Categories, Frequency, Proportioin)
                        
-                       # 表示行を絞り込み 2022/09/10 前で絞り込んでいるのでここでこの処理は不要
-                       #data <-
-                      #  data[which(Categories %in% checked),]
+                       # 表示行を絞り込み
+                       data <-
+                         data[which(Categories %in% checked),]
                        
-                       # ソート　 累積度数計算 2022/08/21 tosa cumsumを使った累積計算
+                       # ソート
                        data[order(data$Values),]
-                       data$Accumulation <- 0
-                       data$AccumulationP <- 0
-                       
-                       cumfreq <- cumsum(Frequency)
-                       cumpercent <- cumsum(Frequency)/length(x)*100.0
-                       
-                       data$Frequency <- paste(format(round(data$Frequency), big.mark=",", scientific=F))
-                       data$Accumulation<- paste(format(round(cumfreq), big.mark=",", scientific=F))
-                       data$Proportioin <- paste(round(data$Proportioin,1),"%")
-                       data$AccumulationP <- paste(round(cumpercent,1),"%")
-                       #
-                       data <- data[, colnames(data) != "Values"]
-                       print(data)
-                       # 合計行を足す 2022/08/21
-                       totalAcc <- data$Accumulation[length(data$Accumulation)]
-                       totalAccP <- data$AccumulationP[length(data$Accumulation)]
-                       tempDf <- data.frame(Categories="合計",Frequency=totalAcc,Proportioin=totalAccP,Accumulation="",AccumulationP="")
-                       data <- rbind(data,tempDf)
-                       colnames(data) <- c("カテゴリー","度数","パーセント","累積度数","累積パーセント")
-                       data
                      } else {
                        "連続値データです。"
-                       # 集計テーブル作成
-                       x <- factor(x)
-                       Categories <- levels(x)
-                       Values <- Categories
-                       Frequency <-
-                         as.numeric(table(x, useNA = "no"))
-                       Proportioin <- round(as.numeric(prop.table(Frequency)), 3) * 100
-                       data <-
-                         data.frame(Values, Categories, Frequency, Proportioin)
-
-                       # ソート　 累積度数計算 2022/08/21 tosa cumsumを使った累積計算
-                       data[order(data$Values),]
-                       data$Accumulation <- 0
-                       data$AccumulationP <- 0
-                       
-                       cumfreq <- cumsum(Frequency)
-                       cumpercent <- cumsum(Frequency)/length(x)*100.0
-                       
-                       data$Frequency <- paste(format(round(data$Frequency), big.mark=",", scientific=F))
-                       data$Accumulation<- paste(format(round(cumfreq), big.mark=",", scientific=F))
-                       data$Proportioin <- paste(round(data$Proportioin,1),"%")
-                       data$AccumulationP <- paste(round(cumpercent,1),"%")
-                       #
-                       data <- data[, colnames(data) != "Values"]
-                       # 合計行を足す 2022/08/21
-                       totalAcc <- data$Accumulation[length(data$Accumulation)]
-                       totalAccP <- data$AccumulationP[length(data$Accumulation)]
-                       tempDf <- data.frame(Categories="合計",Frequency=totalAcc,Proportioin=totalAccP,Accumulation="",AccumulationP="")
-                       data <- rbind(data,tempDf)
-                       colnames(data) <- c("カテゴリー","度数","パーセント","累積度数","累積パーセント")
-                       data
                      }
-                   },align = "r")
+                   })
                  })
                })
 }
@@ -774,18 +682,13 @@ averageGenerator <- function(id, df, dfValue) {
                        
                        # 順序の平均を四捨五入し、一番近いラベル番号の要素を出力
                        if (length(x) > 0) {
-                         # 都道府県、就労などの集計方法は仕様確認後に修正する予定
-                         m <- mean(as.integer(x))
-                         # stat <- my_round(m)
-                         stat <- round(m)
+                         stat <- round(mean(as.integer(x)))
                          stat <-
-                            which(abs(as.numeric(xLabels) - stat) == min(abs(as.numeric(
+                           which(abs(as.numeric(xLabels) - stat) == min(abs(as.numeric(
                              xLabels
                            ) -
                              stat)))
                          paste(xLabels[stat], "：", names(xLabels)[stat])
-                         # paste(format(m, digit = 3), "(", stat, "：", names(xLabels)[which(xLabels == stat)], ")")
-                         paste(format(m, digit = 3))
                        } else{
                          paste("NA")
                        }
@@ -852,8 +755,7 @@ medianGenerator <- function(id, df, dfValue) {
                        # 順序の中央値の要素を出力
                        if (length(x) > 0) {
                          stat <- median(as.integer(x))
-                         # 中央値の表示方法を修正(8/13)
-                         paste(stat, "(", stat, "：", names(xLabels)[which(xLabels == stat)], ")")
+                         paste(stat, "：", names(xLabels)[which(xLabels == stat)])
                        } else{
                          paste("NA")
                        }
@@ -1396,19 +1298,6 @@ histgramGenerator <- function(id, df, dfValue) {
                        } else{
                          bins <- seq(min(x), max(x), length.out = bin_number + 1)
                        }
-                       h <- hist(
-                         x,
-                         breaks = bins,
-                         col = 'darkgray',
-                         border = 'white',
-                         main = column,
-                         xlab = NA,
-                         ylab = "Frequency"
-                       )
-                       # 2022/8/21 tosa
-                       keta <- as.integer(log10(max(h$counts)))
-                       memori <- 10^keta
-                       y = round(max(h$counts)) + memori
                        hist(
                          x,
                          breaks = bins,
@@ -1416,9 +1305,7 @@ histgramGenerator <- function(id, df, dfValue) {
                          border = 'white',
                          main = column,
                          xlab = NA,
-                         ylab = "Frequency",
-                         label = T,
-                         ylim = c(0,y)
+                         ylab = "Frequency"
                        )
                      }
                    }, height = 600, width = 400)
@@ -1539,7 +1426,7 @@ server <- shinyServer(function(input, output, session) {
   
   # タブ移動
   observeEvent(input$link_to_analytics, {
-    showTab("navbar", target = "② 分布と代表値", select = TRUE)
+    showTab("navbar", target = "② 変数分析", select = TRUE)
   })
   
   
@@ -1549,7 +1436,7 @@ server <- shinyServer(function(input, output, session) {
   dfList <- filereader(id = "fileread")
   
   
-  ## 「② 分布と代表値」navbar
+  ## 「② 変数分析」navbar
   
   # ファイル名生成
   fileNameGenerator(id = "analytics",
