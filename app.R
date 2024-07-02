@@ -252,14 +252,14 @@ multivariateTabPanel <- function(id) {
               ns("regression_type"),
               label = "分析の手法を選択",
               choices = c(
-                "重回帰分析(一般線形モデル)" = "lm",
+                "重回帰分析(一般線形モデル)" = "lm"
                 #                "ランダムフォレスト" = "rf",
                 #                "3層ニューラルネット" = "nnet",
-                "ロジスティック回帰分析" = "logistic",
-                "二元配置分散分析" = "two_way_anova",
-                "主成分分析" = "pca",
-                "因子分析" = "fa",
-                "偏相関係数（説明変数3以上）" = "partial_corr"
+                #  "ロジスティック回帰分析" = "logistic",
+                # "二元配置分散分析" = "two_way_anova",
+                # "主成分分析" = "pca",
+                # "因子分析" = "fa",
+                # "偏相関係数（説明変数3以上）" = "partial_corr"
               )
             ),
             actionButton(ns("regression_button"), "実行")

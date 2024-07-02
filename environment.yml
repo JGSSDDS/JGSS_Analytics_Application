@@ -9,3 +9,14 @@ dependencies:
   - r-shinycssloaders
   - r-foreign
   - r-shinyjs
+  - r-shinydashboard
+  - r-haven
+  - r-caret
+  - r-randomforest
+  - r-nnet
+  - r-mass
+  - r-kernlab
+  - r-car
+  - r-psych
+  - r-ggplot2
+  - r-dplyr
