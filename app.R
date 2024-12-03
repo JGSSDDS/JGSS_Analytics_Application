@@ -394,16 +394,33 @@ multivariateTabPanel2 <- function(id) {
           tabPanel("分析結果", verbatimTextOutput(ns("analysis_results2"))),
           tabPanel(
             "プロット",
-            # プロットを統一して表示
-            plotOutput(ns("plot_analysis2"))
+            # 因子分析の場合のプロットを表示
+            conditionalPanel(
+              condition = sprintf("input['%s'] == 'fa'", ns("analysis_type")),
+              fluidRow(
+                column(6, plotOutput(ns("plot_analysis2_none"))),
+                column(6, plotOutput(ns("plot_analysis2_varimax")))
+              ),
+              fluidRow(
+                column(6, plotOutput(ns("plot_analysis2_promax"))),
+                column(6, plotOutput(ns("plot_analysis2_oblimin")))
+              ),
+              # Scree Plot を追加
+              fluidRow(
+                column(12, plotOutput(ns("plot_analysis2_scree")))
+              )
+            ),
+            # 主成分分析の場合のプロットを表示
+            conditionalPanel(
+              condition = sprintf("input['%s'] == 'pca'", ns("analysis_type")),
+              plotOutput(ns("plot_analysis2"))
+            )
           )
         )
       )
     )
   )
 }
-
-
 
 
 
@@ -3860,18 +3877,19 @@ multivariateGenerator2 <- function(id, finalDataFrame) {
     output$num_factors_ui <- renderUI({
       req(input$data_table_for_analysis2_rows_selected)
       num_vars <- length(input$data_table_for_analysis2_rows_selected)
-      
-      # 最大値を変数の数に設定
-      max_factors <- num_vars
-      
-      # デフォルト値を設定（因子分析の場合は変数の数 - 1、主成分分析の場合は変数の数）
-      default_value <- if (input$analysis_type == "fa") num_vars - 1 else num_vars
-      
+      # 現在選択されている値を取得
+      current_selection <- input$num_factors
+      # 現在の選択が有効か確認
+      if (!is.null(current_selection) && current_selection <= num_vars) {
+        selected_value <- current_selection
+      } else {
+        selected_value <- num_vars  # デフォルト値を num_vars に設定
+      }
       selectInput(
         ns("num_factors"),
         label = "抽出する因子/主成分の数を選択",
-        choices = 1:max_factors,
-        selected = default_value
+        choices = 1:num_vars,
+        selected = selected_value
       )
     })
     
@@ -3901,28 +3919,22 @@ multivariateGenerator2 <- function(id, finalDataFrame) {
       total_records <- nrow(tmp_data)  # 欠損値を除去したデータセットのレコード数
       
       # 主成分分析または因子分析を実行
-      result <- tryCatch({
-        switch(input$analysis_type,
-               "pca" = prcomp(tmp_data, center = TRUE, scale. = TRUE),
-               "fa" = {
-                 # 相関行列の確認
-                 correlation_matrix <- cor(tmp_data, use = "pairwise.complete.obs")
-                 if (any(is.na(correlation_matrix))) {
-                   stop("Error: missing values (NAs) in the correlation matrix do not allow me to continue.")
-                 }
-                 rotations <- c("none", "varimax", "promax", "oblimin")
-                 fa_results <- list()
-                 for (rot in rotations) {
-                   # 最尤法（ml）を指定
-                   fa_result <- fa(tmp_data, nfactors = as.numeric(input$num_factors), rotate = rot, fm = 'ml')
-                   fa_results[[rot]] <- fa_result
-                 }
-                 fa_results
-               })
-      }, error = function(e) {
-        # エラーメッセージをキャプチャ
-        return(list(error = e$message))
-      })
+      result <- switch(input$analysis_type,
+                       "pca" = prcomp(tmp_data, center = TRUE, scale. = TRUE),
+                       "fa" = {
+                         # 相関行列の確認
+                         correlation_matrix <- cor(tmp_data, use = "pairwise.complete.obs")
+                         if (any(is.na(correlation_matrix))) {
+                           stop("Error: missing values (NAs) in the correlation matrix do not allow me to continue.")
+                         }
+                         rotations <- c("none", "varimax", "promax", "oblimin")
+                         fa_results <- list()
+                         for (rot in rotations) {
+                           fa_result <- fa(tmp_data, nfactors = as.numeric(input$num_factors), rotate = rot)
+                           fa_results[[rot]] <- fa_result
+                         }
+                         fa_results
+                       })
       
       return(list(result = result, initial_data = initial_data, tmp_data = tmp_data, total_records = total_records))
     })
@@ -3957,20 +3969,17 @@ multivariateGenerator2 <- function(id, finalDataFrame) {
       print(descriptive_stats, row.names = FALSE)  # 行名を表示しないように指定
       cat("\n")
       
-      # エラーが発生した場合の処理
-      if (is.list(result) && !is.null(result$error)) {
-        cat("エラーが発生しました:\n")
-        cat(result$error, "\n")
-        cat("抽出する因子の数が多すぎる可能性があります。変数の数よりも少ない因子の数を選択してください。\n")
-        return()
-      }
-      
       # 主成分分析または因子分析の結果を表示
       if (input$analysis_type == "pca") {
         cat("Principal Component Analysis Results:\n\n")
         
+        # 主成分負荷量の表示（指定された数の主成分のみ）
+        cat("Component Loadings:\n")
+        loadings <- result$rotation[, 1:as.numeric(input$num_factors), drop = FALSE]
+        print(round(loadings, 4))
+        
         # 固有値と分散説明率の表示（指定された数の主成分のみ）
-        cat("Eigenvalues and Variance Explained:\n")
+        cat("\nEigenvalues and Variance Explained:\n")
         eigenvalues <- result$sdev^2
         variance_explained <- eigenvalues / sum(eigenvalues)
         cumulative_variance <- cumsum(variance_explained)
@@ -3981,106 +3990,145 @@ multivariateGenerator2 <- function(id, finalDataFrame) {
           Cumulative_Variance = round(cumulative_variance * 100, 2)
         )
         print(pca_table[1:as.numeric(input$num_factors), ])
-        
-        # 主成分負荷量の表示（指定された数の主成分のみ）
-        cat("Component Loadings:\n")
-        loadings <- result$rotation[, 1:as.numeric(input$num_factors), drop = FALSE] %*% diag(result$sdev[1:as.numeric(input$num_factors)])
-        colnames(loadings) <- paste0("PC", 1:ncol(loadings))
-        print(round(loadings, 4))
-        
       } else if (input$analysis_type == "fa") {
-        # 固有値と分散説明率の表示（因子分析の場合）
-        cat("Eigenvalues and Variance Explained:\n")
-        eigenvalues <- eigen(cor(tmp_data))$values
-        total_variance <- sum(eigenvalues)
-        variance_explained <- eigenvalues / total_variance
-        cumulative_variance <- cumsum(variance_explained)
-        fa_table <- data.frame(
-          Component = paste0("Factor", 1:length(eigenvalues)),
-          Eigenvalue = round(eigenvalues, 4),
-          Variance_Explained = round(variance_explained * 100, 2),
-          Cumulative_Variance = round(cumulative_variance * 100, 2)
-        )
-        print(fa_table[1:as.numeric(input$num_factors), ])
-        
-        cat("\nFactor Analysis Results:\n")
+        cat("Factor Analysis Results:\n")
         for (rot in names(result)) {
           cat("\nRotation method:", rot, "\n")
           fa_res <- result[[rot]]
           # 因子負荷量を表示
           if (!is.null(fa_res$loadings)) {
-            colnames(fa_res$loadings) <- paste0("FA", 1:ncol(fa_res$loadings))
-            # 共通性を取得
-            communalities <- fa_res$communality
-            # 因子負荷量と共通性を結合
-            loadings_with_comm <- cbind(fa_res$loadings[, ], Communality = communalities)
-            print(round(loadings_with_comm, 4))
+            print(round(fa_res$loadings[, ], 4))
           } else {
             cat("No factor loadings available for rotation method:", rot, "\n")
           }
           # 因子間相関行列の表示
           if (!is.null(fa_res$Phi)) {
             cat("\nFactor Intercorrelation Matrix:", rot, "\n")
-            rownames(fa_res$Phi) <- paste0("FA", 1:nrow(fa_res$Phi))
-            colnames(fa_res$Phi) <- paste0("FA", 1:ncol(fa_res$Phi))
             print(round(fa_res$Phi, 4))
           } else {
             cat("\nNo Factor Intercorrelation Matrix for rotation method:", rot, "\n")
           }
-          # 分散説明量の表示
-          if (!is.null(fa_res$Vaccounted)) {
-            cat("\nVariance Accounted For:\n")
-            colnames(fa_res$Vaccounted) <- paste0("FA", 1:ncol(fa_res$Vaccounted))
-            rownames(fa_res$Vaccounted) <- c("SS loadings", "Proportion Var", "Cumulative Var", "Proportion Explained", "Cumulative Proportion")
-            print(round(fa_res$Vaccounted, 4))
+          # 回転行列の表示
+          if (!is.null(fa_res$rot.mat)) {
+            cat("\nRotation matrix: ", rot, "\n", sep = "")
+            print(round(fa_res$rot.mat, 4))
+          } else {
+            cat("\nNo rotation matrix for rotation method:", rot, "\n")
           }
         }
       }
     })
     
-    # プロットの出力
+    # 主成分分析の場合の Scree Plot をカスタマイズ
     output$plot_analysis2 <- renderPlot({
       result_list <- analysis_result()
       result <- result_list$result
-      num_components <- as.numeric(input$num_factors)
-      
-      # エラーが発生した場合はプロットを表示しない
-      if (is.list(result) && !is.null(result$error)) {
-        return()
-      }
-      
       if (input$analysis_type == "pca") {
-        # 主成分分析の場合の固有値を取得
+        # 固有値の取得
         eigenvalues <- result$sdev^2
-      } else if (input$analysis_type == "fa") {
-        # 因子分析の場合の固有値を取得
-        tmp_data <- result_list$tmp_data
-        eigenvalues <- eigen(cor(tmp_data))$values
+        scree_data <- data.frame(
+          Component = 1:length(eigenvalues),
+          Eigenvalue = eigenvalues
+        )
+        # 指定された数の主成分までを表示
+        num_components <- as.numeric(input$num_factors)
+        scree_data <- scree_data[1:num_components, ]
+        # ggplot2 でカスタムプロットを作成
+        ggplot(scree_data, aes(x = Component, y = Eigenvalue)) +
+          geom_line() +
+          geom_point() +
+          geom_text(aes(label = round(Eigenvalue, 2)), vjust = -0.5, size = 3) +
+          labs(title = "Scree Plot", x = "Principal Component", y = "Eigenvalue") +
+          theme_minimal()
       }
-      
-      # Scree Plot のデータフレームを作成
-      scree_data <- data.frame(
-        Component = 1:length(eigenvalues),
-        Eigenvalue = eigenvalues
-      )
-      # 指定された数のコンポーネントまでを表示
-      scree_data <- scree_data[1:num_components, ]
-      
-      # ggplot2 でプロットを作成
-      ggplot(scree_data, aes(x = Component, y = Eigenvalue)) +
-        geom_line() +
-        geom_point() +
-        geom_text(aes(label = round(Eigenvalue, 2)), vjust = -0.5, size = 3) +
-        labs(
-          title = "Scree Plot",
-          x = ifelse(input$analysis_type == "pca", "Principal Component", "Factor"),
-          y = "Eigenvalue"
-        ) +
-        theme_minimal()
+    })
+    
+    # 各回転方法ごとにプロットを作成
+    output$plot_analysis2_none <- renderPlot({
+      result_list <- analysis_result()
+      result <- result_list$result
+      if (input$analysis_type == "fa") {
+        fa_res <- result[["none"]]
+        if (!is.null(fa_res)) {
+          fa.diagram(fa_res, main = "Factor Analysis Diagram - None")
+        }
+      }
+    })
+    
+    output$plot_analysis2_varimax <- renderPlot({
+      result_list <- analysis_result()
+      result <- result_list$result
+      if (input$analysis_type == "fa") {
+        fa_res <- result[["varimax"]]
+        if (!is.null(fa_res)) {
+          fa.diagram(fa_res, main = "Factor Analysis Diagram - Varimax")
+        }
+      }
+    })
+    
+    output$plot_analysis2_promax <- renderPlot({
+      result_list <- analysis_result()
+      result <- result_list$result
+      if (input$analysis_type == "fa") {
+        fa_res <- result[["promax"]]
+        if (!is.null(fa_res)) {
+          fa.diagram(fa_res, main = "Factor Analysis Diagram - Promax")
+        }
+      }
+    })
+    
+    output$plot_analysis2_oblimin <- renderPlot({
+      result_list <- analysis_result()
+      result <- result_list$result
+      if (input$analysis_type == "fa") {
+        fa_res <- result[["oblimin"]]
+        if (!is.null(fa_res)) {
+          fa.diagram(fa_res, main = "Factor Analysis Diagram - Oblimin")
+        }
+      }
+    })
+    
+    # 因子分析の場合の Scree Plot を追加
+    output$plot_analysis2_scree <- renderPlot({
+      result_list <- analysis_result()
+      tmp_data <- result_list$tmp_data
+      if (input$analysis_type == "fa") {
+        # 固有値を計算
+        eigenvalues <- eigen(cor(tmp_data))$values
+        
+        # 平行分析の結果を取得
+        fa_parallel <- fa.parallel(tmp_data, fa = "fa", n.iter = 100, plot = FALSE)
+        
+        # ランダム固有値の平均を取得
+        random_eigenvalues <- fa_parallel$fa.values
+        
+        # データフレームを作成
+        scree_data <- data.frame(
+          Factor = 1:length(eigenvalues),
+          Observed_Eigenvalues = eigenvalues,
+          Random_Eigenvalues = random_eigenvalues
+        )
+        
+        # 指定された数の因子までを表示
+        num_factors <- as.numeric(input$num_factors)
+        scree_data <- scree_data[1:num_factors, ]
+        
+        # データをロング形式に変換
+        scree_data_long <- reshape2::melt(scree_data, id.vars = "Factor", variable.name = "Type", value.name = "Eigenvalue")
+        
+        # ggplot2 でプロット
+        ggplot(scree_data_long, aes(x = Factor, y = Eigenvalue, color = Type, group = Type)) +
+          geom_line() +
+          geom_point() +
+          geom_text(aes(label = round(Eigenvalue, 2)), vjust = -0.5, size = 3) +
+          scale_color_manual(values = c("Observed_Eigenvalues" = "blue", "Random_Eigenvalues" = "red"),
+                             labels = c("Observed Eigenvalues", "Average Random Eigenvalues")) +
+          labs(title = "Scree Plot", x = "Factor Number", y = "Eigenvalue", color = "凡例") +
+          theme_minimal()
+      }
     })
   })
 }
-
 
 
 
