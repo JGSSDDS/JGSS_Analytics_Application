@@ -20,3 +20,5 @@ dependencies:
   - r-psych
   - r-ggplot2
   - r-dplyr
+  - r-gparotation
+  - r-reshape2
